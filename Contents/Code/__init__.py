@@ -334,8 +334,7 @@ def GetClientDependentURL(url, video_resolution):
                 hls_url = hls_url + '?null='
         except:
             hls_url = url
-    
-    Log(hls_url)    
+     
     return hls_url
 
 ##########################################################################################
