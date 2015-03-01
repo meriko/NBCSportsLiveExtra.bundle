@@ -1,0 +1,9 @@
+[
+    {
+        "id": "resolution",
+        "type": "enum",
+        "label": "Max video resolution",
+        "values": ["Auto", "1080", "720", "540", "288"],
+        "default": "Auto"
+    }
+]
