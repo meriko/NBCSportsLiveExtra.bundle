@@ -222,6 +222,7 @@ def CreatePatchedPlaylist(url, cookies):
         elif '.ts' in line:
             original_segment_url = line
             new_segment_url = Callback(ContentOfURL, url = path + original_segment_url, cookies = cookies)
+            new_segment_url = 'http://' + Network.Address + ':32400' + new_segment_url
             new_playlist = new_playlist + new_segment_url + '\n'
         else:
             new_playlist = new_playlist + line + '\n'
