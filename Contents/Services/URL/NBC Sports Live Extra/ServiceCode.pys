@@ -1,0 +1,237 @@
+from nbcsle import ExtractVideoInfo
+
+RAW_HLS_CLIENTS = ['Android', 'iOS', 'Roku', 'Safari']
+RE_KEY_URI = Regex('URI *= *"(.*)"')
+USER_AGENT = 'AppleCoreMedia/1.0.0.11A501 (iPad; U; CPU OS 7_0_2 like Mac OS X; en_us)'
+
+##########################################################################################
+def MetadataObjectForURL(url):
+
+    try:
+        data = String.ParseQueryString(url.split("#")[1])
+    except:
+        raise Ex.MediaNotAvailable
+    
+    video_url = String.Decode(data['url'][0])
+    items_url = String.Decode(data['items_url'][0])
+    
+    items = JSON.ObjectFromURL(url = items_url, cacheTime = CACHE_1HOUR)
+    
+    choice = None
+    if 'choice' in data:
+        choice = data['choice'][0]
+
+        if choice:
+            items = items[choice]
+    
+    for item in items:
+        item_found = False
+        
+        if 'iosStreamUrl' in item:
+            item_found = item['iosStreamUrl'] == video_url
+
+        if not item_found:
+            if 'androidStreamUrl' in item:
+                item_found = item['androidStreamUrl'] == video_url
+        
+        if not item_found:
+            continue
+        
+        info = ExtractVideoInfo(item, items_url, choice)
+        
+        return VideoClipObject(
+                url = info['url'],
+                title = info['title'],
+                summary = info['summary'],
+                duration = info['duration'],
+                thumb = info['thumb'],
+                originally_available_at = info['originally_available_at']
+        )
+    
+###########################################################################################
+def MediaObjectsForURL(url):
+    
+    try:
+        data = String.ParseQueryString(url.split("#")[1])
+    except:
+        raise Ex.MediaNotAvailable
+    
+    video_url = String.Decode(data['url'][0]) 
+    
+    if Client.Platform in RAW_HLS_CLIENTS:
+        return [
+            MediaObject(
+                parts = [
+                    PartObject(
+                        key = HTTPLiveStreamURL(video_url)
+                    )
+                ],
+                video_resolution = 288,
+                audio_channels = 2,
+                optimized_for_streaming = True
+            )            
+        ]
+    else:
+        mo = []
+        
+        for video_resolution in ['1080', '720', '540', '360', '240']:
+            if Client.Product in ['Plex Web']:
+                key = HTTPLiveStreamURL(
+                    Callback(
+                        PlayDirect,
+                        url = video_url,
+                        video_resolution = video_resolution
+                    )
+                )
+            else:
+                key = HTTPLiveStreamURL(
+                    Callback(
+                        PlayIndirect,
+                        url = video_url,
+                        video_resolution = video_resolution
+                    )
+                )
+        
+            mo.append(
+                MediaObject(
+                    parts = [PartObject(key = key)],
+                    video_resolution = video_resolution,
+                    audio_channels = 2,
+                    optimized_for_streaming = True
+                )
+            )
+    
+    return mo
+
+##########################################################################################
+def PlayDirect(url, video_resolution = '720', **kwargs):
+    hls_url = GetSpecificResolutionURL(url, video_resolution)
+    
+    return Redirect(
+        Callback(CreatePatchedPlaylist, url = hls_url, cookies = HTTP.CookiesForURL(url))
+    )
+    
+##########################################################################################
+@indirect
+def PlayIndirect(url, video_resolution = '720', **kwargs):
+    hls_url = GetSpecificResolutionURL(url, video_resolution)
+    
+    return IndirectResponse(
+        VideoClipObject,
+        key = HTTPLiveStreamURL(url = hls_url)
+    )
+
+##########################################################################################
+def GetSpecificResolutionURL(url, video_resolution):
+
+    streams = GetHLSStreams(url)            
+    hls_url = None
+
+    min_diff_found = 10000000 # Some huge number to get it started
+    for stream in streams:
+        if 'resolution' in stream:
+            diff = abs(stream['resolution'] - int(video_resolution))
+            
+            if diff < min_diff_found:
+                hls_url = stream['url']
+                min_diff_found = diff
+
+     
+    if not '?' in hls_url:
+        # Samsung requires an arbitrary parameter in the stream url since
+        # '&' is always appended by that client ...
+        hls_url = hls_url + '?null='
+     
+    return hls_url
+
+##########################################################################################
+def GetHLSStreams(url):
+    headers               = {}
+    headers['User-Agent'] = USER_AGENT
+
+    streams = []
+
+    try:
+        playList = HTTP.Request(url, headers = headers, cacheTime = 0).content
+    except:
+        raise Ex.MediaNotAvailable
+
+    # Parse the m3u8 file to get:
+    # - URL
+    # - Resolution
+    # - Bitrate
+    for line in playList.splitlines():
+        if "BANDWIDTH" in line:
+            stream            = {}
+            stream["bitrate"] = int(Regex('(?<=BANDWIDTH=)[0-9]+').search(line).group(0))        
+
+            if "RESOLUTION" in line:
+                stream["resolution"] = int(Regex('(?<=RESOLUTION=)[0-9]+x[0-9]+').search(line).group(0).split("x")[1])
+
+            if not 'resolution' in stream:
+                stream["resolution"] = int(BitrateToResolution(stream["bitrate"]))
+                
+        elif "m3u8" in line:
+            path = ''
+            
+            if not line.startswith("http"):
+                path = url[ : url.rfind('/') + 1]
+            
+            try:
+                stream["url"] = path + line    
+                streams.append(stream)
+            except:
+                pass
+                
+    sorted_streams = sorted(streams, key = lambda stream: stream["bitrate"], reverse = True)        
+
+    return sorted_streams
+
+##########################################################################################
+def BitrateToResolution(bitrate):
+    if bitrate > 2596000:
+        return 1080
+    elif bitrate > 1896000:
+        return 720
+    elif bitrate > 796000:
+        return 540
+    elif bitrate > 496000:
+        return 360
+    else:
+        return 240
+        
+####################################################################################################
+def CreatePatchedPlaylist(url, cookies):
+    headers               = {}
+    headers['Cookie']     = cookies
+    headers['User-Agent'] = USER_AGENT
+
+    original_playlist = HTTP.Request(url, headers = headers, cacheTime = 0).content
+    path = path = url[ : url.rfind('/') + 1]
+    new_playlist = ''
+
+    for line in original_playlist.splitlines():
+        if line.startswith('#EXT-X-KEY'):
+            original_key_url = RE_KEY_URI.search(line).groups()[0]
+            new_key_url = Callback(ContentOfURL, url = original_key_url, cookies = cookies)
+            new_playlist = new_playlist + line.replace(original_key_url, new_key_url) + '\n'
+        elif line.startswith('http'):
+            original_segment_url = line
+            new_segment_url = Callback(ContentOfURL, url = original_segment_url, cookies = cookies)
+            new_playlist = new_playlist + new_segment_url + '\n'
+        elif '.ts' in line:
+            original_segment_url = line
+            new_segment_url = Callback(ContentOfURL, url = path + original_segment_url, cookies = cookies)
+            new_playlist = new_playlist + new_segment_url + '\n'
+        else:
+            new_playlist = new_playlist + line + '\n'
+
+    return new_playlist
+    
+####################################################################################################
+def ContentOfURL(url, cookies):
+    headers               = {}
+    headers['Cookie']     = cookies
+    headers['User-Agent'] = USER_AGENT
+    
+    return HTTP.Request(url, headers = headers, cacheTime = 0).content

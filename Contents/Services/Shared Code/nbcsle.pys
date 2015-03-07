@@ -1,0 +1,67 @@
+IMAGE_BASE_URL = 'https://hdliveextra-a.akamaihd.net/HD/image_sports/mobile/'
+IMAGE_BASE_ALT_URL = 'http://hdliveextra-pmd.edgesuite.net/HD/image_sports/mobile/'
+
+##########################################################################################
+def ExtractVideoInfo(item, items_url, choice):
+
+    if item['free'] == 0:
+        return None
+    
+    if 'iosStreamUrl' in item:
+        url = item['iosStreamUrl']
+    elif 'androidStreamUrl' in item:
+        url = item['androidStreamUrl']
+    else:
+        return None
+
+    try:
+        duration = int(round(float(item['length']) * 1000))
+    except:
+        duration = None
+        
+    thumb_id = item['image']
+    
+    try:
+        date = item['start'].split('-')[0]
+        hours = item['start'].split('-')[1][0:2]
+        mins = item['start'].split('-')[1][2:] + ' EST\r\n'
+        originally_available_at = Datetime.ParseDate(date).date()
+    except:
+        hours = ''
+        mins = ''
+        originally_available_at = ''
+    
+    summary = hours + ':' + mins + item['info']
+    
+    try:
+        pid = str(item['pid'])
+    except:
+        pid = ''
+    
+    new_url = 'http://stream.nbcsports.com/liveextra/?pid=' + pid + '#url=' + String.Encode(url) + '&items_url=' + String.Encode(items_url) + '&choice='
+    
+    if choice:
+        new_url = new_url + choice
+    
+    return {
+        'url' : new_url,
+        'title' : item['title'],
+        'summary' : summary,
+        'duration' : duration,
+        'thumb' : GetIMG(thumb_id),
+        'originally_available_at' : originally_available_at
+    }
+
+##########################################################################################        
+def GetIMG(thumb_id):
+    try:
+        url = IMAGE_BASE_URL + thumb_id + '_m50.jpg'
+        dummy = HTTP.Request(url, cacheTime = CACHE_1MONTH).content
+        return url
+    except:
+        try:
+            url = IMAGE_BASE_ALT_URL + thumb_id + '_m50.jpg'
+            dummy = HTTP.Request(url, cacheTime = CACHE_1MONTH).content
+            return url
+        except:
+            return None
