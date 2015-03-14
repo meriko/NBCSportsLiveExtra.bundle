@@ -2,7 +2,7 @@ from nbcsle import ExtractVideoInfo
 
 RAW_HLS_CLIENTS = ['Android', 'iOS', 'Roku', 'Safari']
 RE_KEY_URI = Regex('URI *= *"(.*)"')
-USER_AGENT = 'AppleCoreMedia/1.0.0.11A501 (iPad; U; CPU OS 7_0_2 like Mac OS X; en_us)'
+USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/600.3.18 (KHTML, like Gecko) Version/8.0.3 Safari/600.3.18'
 
 ##########################################################################################
 def MetadataObjectForURL(url):
@@ -56,7 +56,7 @@ def MediaObjectsForURL(url):
     except:
         raise Ex.MediaNotAvailable
     
-    video_url = String.Decode(data['url'][0]) 
+    video_url = String.Decode(data['url'][0])
     
     if Client.Platform in RAW_HLS_CLIENTS:
         return [
