@@ -4,7 +4,7 @@ IMAGE_BASE_ALT_URL = 'http://hdliveextra-pmd.edgesuite.net/HD/image_sports/mobil
 ##########################################################################################
 def ExtractVideoInfo(item, items_url, choice):
 
-    if item['free'] == 0:
+    if int(item['free']) == 0:
         return None
     
     if 'iosStreamUrl' in item:
